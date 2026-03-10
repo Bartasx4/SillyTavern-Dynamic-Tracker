@@ -126,12 +126,39 @@ function ensureMessageButtonObserver() {
 function collectAffectedMessageIds(mutations = []) {
     const ids = new Set();
 
+    const isInternalTrackerNode = (element) => {
+        if (!element || element.nodeType !== 1) return false;
+        const el = /** @type {HTMLElement} */ (element);
+        return (
+            el.classList?.contains('mes_dynamic_tracker') ||
+            el.closest?.('.mes_dynamic_tracker') ||
+            el.classList?.contains('mes_dynamic_tracker_button') ||
+            el.closest?.('.mes_dynamic_tracker_button')
+        );
+    };
+
+    const mutationIsOnlyInternal = (mutation) => {
+        const nodes = [];
+        if (mutation.addedNodes) nodes.push(...mutation.addedNodes);
+        if (mutation.removedNodes) nodes.push(...mutation.removedNodes);
+        const elementNodes = nodes.filter((n) => n && n.nodeType === 1);
+        return elementNodes.length > 0 && elementNodes.every(isInternalTrackerNode);
+    };
+
     const addFromElement = (element) => {
         if (!element || element.nodeType !== 1) {
             return;
         }
 
         const el = /** @type {HTMLElement} */ (element);
+
+        // Ignore mutations originating from our own tracker blocks/buttons.
+        // Without this, re-rendering the tracker would trigger the observer again,
+        // causing an endless refresh loop that breaks <details> toggling.
+        if (isInternalTrackerNode(el)) {
+            return;
+        }
+
         const mes = el.classList?.contains('mes') ? el : el.closest?.('.mes');
         if (!mes) {
             return;
@@ -145,6 +172,11 @@ function collectAffectedMessageIds(mutations = []) {
     };
 
     for (const mutation of mutations) {
+        // Skip mutations that are exclusively our own DOM insertions/removals.
+        if (mutationIsOnlyInternal(mutation)) {
+            continue;
+        }
+
         // Most swipe switches update the children of `.mes_text`, so the mutation target is a good signal.
         addFromElement(mutation.target);
 
