@@ -1,0 +1,13 @@
+{
+  "display_name": "Dynamic Tracker",
+  "loading_order": 305,
+  "requires": [],
+  "optional": [],
+  "js": "index.js",
+  "css": "style.css",
+  "author": "Bartasx",
+  "version": "1.3.3",
+  "auto_update": false,
+  "generate_interceptor": "dynamicTrackerGenerateInterceptor",
+  "homePage": "https://github.com/Bartasx4/SillyTavern-Dynamic-Tracker"
+}

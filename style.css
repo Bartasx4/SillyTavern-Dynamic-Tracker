@@ -1,0 +1,341 @@
+.mes_dynamic_tracker {
+    margin: 0.25rem 0 0.35rem;
+}
+
+.mes_dynamic_tracker .dynamic-tracker-wrapper {
+    border: 0;
+    border-radius: 0;
+    padding: 0;
+    background: transparent;
+    font-size: smaller;
+}
+
+.mes_dynamic_tracker .dt-root-shell,
+.mes_dynamic_tracker .dt-group,
+.mes_dynamic_tracker .dt-section {
+    margin: 0;
+}
+
+.mes_dynamic_tracker .dt-root-shell > summary,
+.mes_dynamic_tracker .dt-group > summary,
+.mes_dynamic_tracker .dt-section > summary {
+    cursor: pointer;
+    font-weight: 700;
+}
+
+.mes_dynamic_tracker .dt-root-shell > summary span,
+.mes_dynamic_tracker .dt-group > summary span,
+.mes_dynamic_tracker .dt-section > summary span {
+    position: relative;
+    left: -3.25px;
+    display: inline-block;
+}
+
+.mes_dynamic_tracker .dt-root-content,
+.mes_dynamic_tracker .dt-group-body,
+.mes_dynamic_tracker .dt-section-body,
+.mes_dynamic_tracker .dt-array-item-body {
+    margin-top: 0.15rem;
+    padding-left: 1.15rem;
+}
+
+.mes_dynamic_tracker .dt-toolbar {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 0.25rem;
+    margin-top: 0.15rem;
+    padding-left: 1.15rem;
+}
+
+.mes_dynamic_tracker .dt-toolbar-button {
+    border: 0;
+    background: transparent;
+    color: inherit;
+    opacity: 0.72;
+    cursor: pointer;
+    padding: 0.1rem 0.2rem;
+    line-height: 1;
+}
+
+.mes_dynamic_tracker .dt-toolbar-button:hover {
+    opacity: 1;
+}
+
+
+.mes_dynamic_tracker .dt-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0;
+}
+
+.mes_dynamic_tracker .dt-table td {
+    padding: 0.08rem 0.25rem;
+    vertical-align: top;
+}
+
+.mes_dynamic_tracker .dt-label {
+    width: 72px;
+    text-align: right;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.mes_dynamic_tracker .dt-value {
+    word-break: break-word;
+}
+
+.mes_dynamic_tracker .dt-section,
+.mes_dynamic_tracker .dt-group {
+    margin: 0.2rem 0;
+}
+
+.mes_dynamic_tracker .dt-section-title,
+.mes_dynamic_tracker .dt-array-item-title {
+    font-weight: 700;
+    margin: 0 0 0.1rem;
+}
+
+.mes_dynamic_tracker .dt-array-item {
+    border-top: 1px solid var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.12));
+    padding: 0.35rem 0 0;
+    margin-top: 0.35rem;
+}
+
+.mes_dynamic_tracker .dt-array-item:first-child {
+    border-top: 0;
+    margin-top: 0;
+    padding-top: 0;
+}
+
+.mes_dynamic_tracker .dt-list {
+    margin: 0.1rem 0 0;
+    padding-left: 1.15rem;
+}
+
+.dt-empty {
+    opacity: 0.75;
+    font-style: italic;
+}
+
+.mes_dynamic_tracker .dt-divider {
+    border: 0;
+    border-top: 1px solid var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.12));
+    margin: 0.35rem 0 0;
+    opacity: 0.7;
+}
+
+.mes_button.mes_dynamic_tracker_button.spinning {
+    animation: dt-spin 0.9s linear infinite;
+}
+
+@keyframes dt-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.dynamic-tracker-settings .dynamic-tracker-grid,
+.dynamic-tracker-settings .dynamic-tracker-form-grid {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.dynamic-tracker-settings .dynamic-tracker-grid {
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.dynamic-tracker-settings .dynamic-tracker-form-grid {
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    margin-top: 0.75rem;
+}
+
+.dynamic-tracker-settings .dynamic-tracker-full {
+    grid-column: 1 / -1;
+}
+
+.dynamic-tracker-settings .dynamic-tracker-field,
+.dynamic-tracker-settings .dynamic-tracker-checkbox {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.dynamic-tracker-settings .dynamic-tracker-inline {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.dynamic-tracker-settings .dynamic-tracker-inline select {
+    flex: 1;
+}
+
+.dynamic-tracker-settings .dynamic-tracker-checkboxes {
+    display: grid;
+    gap: 0.35rem 0.75rem;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+
+.dynamic-tracker-settings .dynamic-tracker-checkboxes label,
+.dynamic-tracker-settings .dynamic-tracker-checkbox {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 0.45rem;
+}
+
+.dynamic-tracker-settings .dynamic-tracker-checkboxes label input,
+.dynamic-tracker-settings .dynamic-tracker-checkbox input {
+    margin: 0;
+    flex: 0 0 auto;
+}
+
+.dynamic-tracker-settings .dynamic-tracker-checkboxes label small {
+    margin-left: 0.2rem;
+    opacity: 0.75;
+}
+
+.dynamic-tracker-settings .dynamic-tracker-include-field {
+    align-self: start;
+}
+
+.dynamic-tracker-settings .dynamic-tracker-actions,
+.dynamic-tracker-settings .dynamic-tracker-editor-header {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 0.75rem;
+}
+
+/* "Show preview" button: make it readable across themes (some themes style menu_button as icon-only). */
+.dynamic-tracker-settings #dt_show_preview {
+    padding: 0.25rem 0.65rem;
+    border-radius: 0.45rem;
+    border: 1px solid var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.12));
+    background: var(--SmartThemeBlurTintColor, rgba(0, 0, 0, 0.25));
+    color: var(--SmartThemeBodyColor, inherit);
+}
+
+.dynamic-tracker-settings #dt_show_preview:hover {
+    filter: brightness(1.08);
+}
+
+.dynamic-tracker-settings .dynamic-tracker-form-status {
+    min-height: 1.25rem;
+    margin-top: 0.5rem;
+    font-size: 0.9em;
+    opacity: 0.85;
+}
+
+.dynamic-tracker-settings .dynamic-tracker-tree {
+    margin-top: 0.75rem;
+    border: 1px solid var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.12));
+    border-radius: 0.5rem;
+    padding: 0.75rem;
+    max-height: 26rem;
+    overflow: auto;
+}
+
+.dynamic-tracker-settings .dt-tree-list {
+    list-style: none;
+    padding-left: 1rem;
+    margin: 0;
+}
+
+.dynamic-tracker-settings .dt-tree-list:first-child {
+    padding-left: 0;
+}
+
+.dynamic-tracker-settings .dt-tree-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.2rem 0;
+}
+
+.dynamic-tracker-settings .dt-tree-tag {
+    font-size: 0.78em;
+    opacity: 0.75;
+    min-width: 4.25rem;
+    text-transform: uppercase;
+}
+
+.dynamic-tracker-settings .dt-tree-main {
+    flex: 1;
+    word-break: break-word;
+}
+
+.dynamic-tracker-settings .dt-tree-actions {
+    display: inline-flex;
+    gap: 0.25rem;
+    align-items: center;
+}
+
+.dynamic-tracker-settings .dt-tree-action {
+    cursor: pointer;
+    opacity: 0.8;
+}
+
+.dynamic-tracker-settings .dt-tree-action:hover {
+    opacity: 1;
+}
+
+.dynamic-tracker-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 5000;
+    padding: 1rem;
+}
+
+.dynamic-tracker-modal__card {
+    width: min(900px, 100%);
+    max-height: 85vh;
+    overflow: auto;
+    border-radius: 0.6rem;
+    background: var(--SmartThemeBlurTintColor, #111);
+    border: 1px solid var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.12));
+    padding: 1rem;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35);
+}
+
+.dynamic-tracker-modal__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+}
+
+.dynamic-tracker-modal__body pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: monospace;
+    font-size: 0.9em;
+}
+
+
+.dynamic-tracker-settings .dt-tree-action.is-disabled {
+    opacity: 0.3;
+    cursor: default;
+}
+
+.dynamic-tracker-modal__footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+}
+
+.dynamic-tracker-modal__textarea {
+    width: 100%;
+    min-height: 18rem;
+    resize: vertical;
+    font-family: monospace;
+}
+

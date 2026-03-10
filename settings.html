@@ -1,0 +1,124 @@
+<div id="dynamic_tracker_settings" class="dynamic-tracker-settings extension_container">
+    <div class="inline-drawer">
+        <div class="inline-drawer-toggle inline-drawer-header">
+            <b>Dynamic Tracker</b>
+            <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+        </div>
+        <div class="inline-drawer-content">
+            <div class="dynamic-tracker-grid">
+                <label class="dynamic-tracker-field">
+                    <span>Auto Mode</span>
+                    <select id="dt_auto_mode">
+                        <option value="none">None</option>
+                        <option value="responses">Process responses</option>
+                        <option value="inputs">Process inputs</option>
+                        <option value="both">Process both</option>
+                    </select>
+                </label>
+
+                <div class="dynamic-tracker-field">
+                    <span>Schema Preset</span>
+                    <div class="dynamic-tracker-inline">
+                        <select id="dt_schema_preset"></select>
+                        <button id="dt_preset_create" class="menu_button fa-solid fa-plus" type="button" title="Create preset"></button>
+                        <button id="dt_preset_rename" class="menu_button fa-solid fa-pen" type="button" title="Rename preset"></button>
+                        <button id="dt_preset_delete" class="menu_button fa-solid fa-trash" type="button" title="Delete preset"></button>
+                    </div>
+                </div>
+
+                <label class="dynamic-tracker-field dynamic-tracker-full">
+                    <span>Prompt</span>
+                    <textarea id="dt_prompt" rows="8"></textarea>
+                </label>
+
+                <label class="dynamic-tracker-field">
+                    <span>Max Response Tokens</span>
+                    <input id="dt_max_tokens" class="text_pole settings_input" type="number" min="1" step="1">
+                </label>
+
+                <label class="dynamic-tracker-field">
+                    <span>Include Last X Messages (0 means all, 1 means last)</span>
+                    <input id="dt_include_messages" class="text_pole settings_input" type="number" min="0" step="1">
+                </label>
+
+                <label class="dynamic-tracker-field">
+                    <span>Include Last X Tracker Messages (0 means none)</span>
+                    <input id="dt_include_trackers" class="text_pole settings_input" type="number" min="0" step="1">
+                </label>
+
+                <label class="dynamic-tracker-field">
+                    <span>Injected Tracker Role</span>
+                    <select id="dt_tracker_role">
+                        <option value="assistant">assistant</option>
+                        <option value="system">system</option>
+                        <option value="user">user</option>
+                    </select>
+                </label>
+            </div>
+
+            <hr>
+
+            <div class="dynamic-tracker-editor">
+                <div class="dynamic-tracker-editor-header">
+                    <b>Tracker Fields</b>
+                    <button id="dt_show_preview" class="menu_button" type="button">Show preview</button>
+                </div>
+
+                <div class="dynamic-tracker-form-grid">
+                    <label class="dynamic-tracker-field">
+                        <span>Parent container</span>
+                        <select id="dt_parent_select"></select>
+                    </label>
+
+                    <label class="dynamic-tracker-field">
+                        <span>Entry kind</span>
+                        <select id="dt_entry_kind">
+                            <option value="field">Field</option>
+                            <option value="group">Group</option>
+                        </select>
+                    </label>
+
+                    <label class="dynamic-tracker-field">
+                        <span>id</span>
+                        <input id="dt_field_id" class="text_pole settings_input" type="text">
+                    </label>
+
+                    <label class="dynamic-tracker-field">
+                        <span>Name</span>
+                        <input id="dt_field_name" class="text_pole settings_input" type="text">
+                    </label>
+
+                    <label class="dynamic-tracker-field">
+                        <span>Type</span>
+                        <select id="dt_field_type">
+                            <option value="string">string</option>
+                            <option value="number">number</option>
+                            <option value="integer">integer</option>
+                            <option value="boolean">boolean</option>
+                            <option value="object">object</option>
+                            <option value="array">array</option>
+                        </select>
+                    </label>
+
+                    <label class="dynamic-tracker-field dynamic-tracker-full">
+                        <span>Description</span>
+                        <textarea id="dt_field_description" rows="3"></textarea>
+                    </label>
+
+                    <label class="dynamic-tracker-checkbox"><input id="dt_field_required" type="checkbox"> Required</label>
+                    <label class="dynamic-tracker-checkbox"><input id="dt_field_collapsible" type="checkbox"> Collapsible</label>
+                    <label class="dynamic-tracker-checkbox"><input id="dt_field_title" type="checkbox"> Title (for array items)</label>
+                </div>
+
+                <div class="dynamic-tracker-actions">
+                    <button id="dt_save_field" class="menu_button" type="button">Add field</button>
+                    <button id="dt_clear_form" class="menu_button" type="button">Clear form</button>
+                </div>
+
+                <div id="dt_form_status" class="dynamic-tracker-form-status"></div>
+
+                <div id="dt_field_tree" class="dynamic-tracker-tree"></div>
+            </div>
+        </div>
+    </div>
+</div>
