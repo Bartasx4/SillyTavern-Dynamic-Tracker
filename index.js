@@ -37,7 +37,6 @@ import {
 import {
     setTrackerWrapperTemplate,
     renderTrackerForMessage,
-    renderAllTrackers,
 } from './lib/tracker-ui.js';
 import { generateQuietPrompt, stopGeneration } from '../../../../script.js';
 import { POPUP_RESULT, POPUP_TYPE } from '../../../../scripts/popup.js';
@@ -46,8 +45,11 @@ const pendingControllers = new Map();
 let activeQuietGenerationPlan = null;
 let buttonObserver = null;
 let buttonRefreshQueued = false;
+let buttonRefreshTimer = null;
+let buttonRefreshLastRun = 0;
 let trackerRefreshQueued = false;
 const trackerRefreshIds = new Set();
+const trackerRefreshTimers = new Map();
 const uiState = {
     mounted: false,
     currentEditUid: null,
@@ -81,16 +83,32 @@ function syncPendingButtons() {
 }
 
 function scheduleButtonRefresh() {
-    if (buttonRefreshQueued) {
-        return;
+    // Streaming and other extensions can generate a lot of DOM mutations.
+    // Debounce button scanning to avoid repeatedly walking the whole chat DOM.
+    if (buttonRefreshTimer) {
+        clearTimeout(buttonRefreshTimer);
     }
 
-    buttonRefreshQueued = true;
-    requestAnimationFrame(() => {
-        buttonRefreshQueued = false;
-        installMessageButtons();
-        syncPendingButtons();
-    });
+    buttonRefreshTimer = setTimeout(() => {
+        buttonRefreshTimer = null;
+
+        // Safety cooldown: do not run more often than every ~200ms.
+        const now = Date.now();
+        if (now - buttonRefreshLastRun < 200) {
+            return;
+        }
+        buttonRefreshLastRun = now;
+
+        if (buttonRefreshQueued) {
+            return;
+        }
+        buttonRefreshQueued = true;
+        requestAnimationFrame(() => {
+            buttonRefreshQueued = false;
+            installMessageButtons();
+            syncPendingButtons();
+        });
+    }, 120);
 }
 
 function ensureMessageButtonObserver() {
@@ -145,6 +163,18 @@ function collectAffectedMessageIds(mutations = []) {
         return elementNodes.length > 0 && elementNodes.every(isInternalTrackerNode);
     };
 
+    const isRelevantChangeNode = (element) => {
+        if (!element || element.nodeType !== 1) return false;
+        const el = /** @type {HTMLElement} */ (element);
+        // We only care about high-level message structure changes.
+        // This avoids re-rendering trackers on every streaming token or regex rewrite.
+        return (
+            el.classList?.contains('mes') ||
+            el.classList?.contains('mes_text') ||
+            el.querySelector?.('.mes_text')
+        );
+    };
+
     const addFromElement = (element) => {
         if (!element || element.nodeType !== 1) {
             return;
@@ -156,6 +186,11 @@ function collectAffectedMessageIds(mutations = []) {
         // Without this, re-rendering the tracker would trigger the observer again,
         // causing an endless refresh loop that breaks <details> toggling.
         if (isInternalTrackerNode(el)) {
+            return;
+        }
+
+        // Ignore low-level nodes (e.g. streaming spans inside .mes_text).
+        if (!isRelevantChangeNode(el)) {
             return;
         }
 
@@ -177,9 +212,6 @@ function collectAffectedMessageIds(mutations = []) {
             continue;
         }
 
-        // Most swipe switches update the children of `.mes_text`, so the mutation target is a good signal.
-        addFromElement(mutation.target);
-
         for (const node of mutation.addedNodes || []) {
             addFromElement(node);
         }
@@ -193,10 +225,24 @@ function collectAffectedMessageIds(mutations = []) {
 }
 
 function queueTrackerRefresh(messageId) {
-    if (Number.isInteger(messageId)) {
-        trackerRefreshIds.add(messageId);
+    const id = Number.parseInt(String(messageId), 10);
+    if (Number.isNaN(id)) {
+        return;
     }
-    scheduleTrackerRefresh();
+
+    // Debounce per message to avoid repeated re-renders during streaming or rapid DOM churn.
+    if (trackerRefreshTimers.has(id)) {
+        clearTimeout(trackerRefreshTimers.get(id));
+    }
+
+    trackerRefreshTimers.set(
+        id,
+        setTimeout(() => {
+            trackerRefreshTimers.delete(id);
+            trackerRefreshIds.add(id);
+            scheduleTrackerRefresh();
+        }, 180),
+    );
 }
 
 function scheduleTrackerRefresh() {
@@ -217,7 +263,19 @@ function scheduleTrackerRefresh() {
             return;
         }
 
-        renderAllTrackers(chat);
+        // Fallback (should be rare): only render trackers for visible messages.
+        renderVisibleTrackers(chat);
+    });
+}
+
+function renderVisibleTrackers(chat) {
+    // Avoid iterating the whole chat history; render only currently visible message DOM nodes.
+    document.querySelectorAll('#chat .mes[mesid]').forEach((element) => {
+        const id = Number.parseInt(element.getAttribute('mesid'), 10);
+        if (Number.isNaN(id)) {
+            return;
+        }
+        renderTrackerForMessage(id, getTrackerStore(chat?.[id]));
     });
 }
 
@@ -1306,7 +1364,6 @@ async function generateTracker(messageId) {
             quietToLoud: false,
             skipWIAN: false,
             responseLength: Number(settings.maxResponseTokens) || 600,
-            jsonSchema: schema,
             removeReasoning: false,
             trimToSentence: false,
         });
@@ -1433,7 +1490,7 @@ function registerChatEvents() {
 
     const refresh = () => {
         scheduleButtonRefresh();
-        renderAllTrackers(context.chat || []);
+        renderVisibleTrackers(context.chat || []);
     };
 
     if (events.CHAT_CHANGED) {
@@ -1635,7 +1692,7 @@ async function initialize() {
     await mountSettings();
     installMessageButtons();
     ensureMessageButtonObserver();
-    renderAllTrackers(getContext().chat || []);
+    renderVisibleTrackers(getContext().chat || []);
     registerChatEvents();
     showToast('success', 'Dynamic Tracker loaded.');
 }
