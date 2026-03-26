@@ -1275,38 +1275,74 @@ function applyQuietTrackerGenerationWindow(chatMessages, plan) {
         return;
     }
 
+    // NOTE:
+    // `chatMessages` is the *already pre-processed* message list that SillyTavern is about to send.
+    // When the user hides messages from context, SillyTavern filters them out before calling the interceptor.
+    // Therefore, we must apply the "Include last X messages" window relative to `chatMessages`,
+    // not relative to `context.chat` indexes, otherwise we can accidentally splice away the whole array.
+
     const safeTargetIndex = Math.max(0, Math.min(Number(plan.targetIndex) || 0, sourceMessages.length - 1));
     const includeLastXMessages = Math.max(0, Number(plan.includeLastXMessages) || 0);
     const includeLastXTrackerMessages = Math.max(0, Number(plan.includeLastXTrackerMessages) || 0);
-    const startIndex = includeLastXMessages === 0
-        ? 0
-        : Math.max(0, safeTargetIndex - Math.max(1, includeLastXMessages) + 1);
 
-    if (chatMessages.length > safeTargetIndex + 1) {
-        chatMessages.splice(safeTargetIndex + 1);
-    }
-
-    if (startIndex > 0) {
-        chatMessages.splice(0, startIndex);
-    }
-
-    if (!includeLastXTrackerMessages) {
-        return;
-    }
-
-    let remaining = includeLastXTrackerMessages;
-    for (let originalIndex = safeTargetIndex - 1; originalIndex >= startIndex && remaining > 0; originalIndex -= 1) {
-        const trackerStore = getTrackerStore(sourceMessages[originalIndex]);
-        if (!trackerStore?.data) {
-            continue;
+    // Remove any previously injected synthetic tracker messages.
+    // Quiet generation should always inject trackers deterministically.
+    for (let i = chatMessages.length - 1; i >= 0; i -= 1) {
+        if (chatMessages[i]?.extra?.__dynamicTrackerSynthetic) {
+            chatMessages.splice(i, 1);
         }
+    }
 
-        const relativeIndex = originalIndex - startIndex;
-        chatMessages.splice(relativeIndex + 1, 0, buildSyntheticTrackerMessage(trackerStore, {
+    const targetMessage = sourceMessages[safeTargetIndex];
+
+    const findMessageIndex = (messages, needle) => {
+        if (!needle) return -1;
+        const direct = messages.indexOf(needle);
+        if (direct !== -1) return direct;
+
+        // Fallback matching when SillyTavern clones objects.
+        const needleDate = String(needle.send_date ?? '');
+        const needleMes = String(needle.mes ?? '');
+        const needleName = String(needle.name ?? '');
+        const needleUser = !!needle.is_user;
+        const needleSystem = !!needle.is_system;
+
+        return messages.findIndex((m) =>
+            m
+            && String(m.send_date ?? '') === needleDate
+            && String(m.mes ?? '') === needleMes
+            && String(m.name ?? '') === needleName
+            && !!m.is_user === needleUser
+            && !!m.is_system === needleSystem,
+        );
+    };
+
+    let targetPos = findMessageIndex(chatMessages, targetMessage);
+    // If for some reason we cannot locate the target message (edge cases),
+    // treat the last message in the prompt as the target.
+    if (targetPos < 0) {
+        targetPos = Math.max(0, chatMessages.length - 1);
+    }
+
+    // Trim after the target message so manual generation on older messages behaves like "target is last".
+    if (chatMessages.length > targetPos + 1) {
+        chatMessages.splice(targetPos + 1);
+    }
+
+    // Apply "Include last X messages" window relative to the remaining prompt.
+    const startPos = includeLastXMessages === 0
+        ? 0
+        : Math.max(0, targetPos - Math.max(1, includeLastXMessages) + 1);
+    if (startPos > 0) {
+        chatMessages.splice(0, startPos);
+    }
+
+    // Inject previous trackers (JSON) between the messages in the final window.
+    if (includeLastXTrackerMessages) {
+        buildTrackerInjectionMessages(chatMessages, includeLastXTrackerMessages, {
             format: 'json',
             role: getSettings().trackerMessageRole,
-        }));
-        remaining -= 1;
+        });
     }
 }
 
