@@ -1739,10 +1739,14 @@ globalThis.dynamicTrackerGenerateInterceptor = async function dynamicTrackerGene
     }
 
     if (type === 'quiet') {
+        // Most extensions use `generateQuietPrompt()` to generate assistant text.
+        // We still want tracker injections to be present there (so the model sees Status),
+        // *except* when this quiet request is our own tracker-generation run.
         if (activeQuietGenerationPlan) {
             applyQuietTrackerGenerationWindow(chat, activeQuietGenerationPlan);
+            return;
         }
-        return;
+        // Fallthrough: treat quiet generations like normal ones and inject last trackers.
     }
 
     const settings = getSettings();
