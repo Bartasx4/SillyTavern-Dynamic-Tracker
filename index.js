@@ -37,8 +37,17 @@ import {
 import {
     setTrackerWrapperTemplate,
     renderTrackerForMessage,
+    removeRenderedTracker,
 } from './lib/tracker-ui.js';
-import { generateQuietPrompt, stopGeneration } from '../../../../script.js';
+import {
+    MAX_INJECTION_DEPTH,
+    extension_prompt_roles,
+    extension_prompt_types,
+    eventSource,
+    event_types,
+    generateQuietPrompt,
+    stopGeneration,
+} from '../../../../script.js';
 import { POPUP_RESULT, POPUP_TYPE } from '../../../../scripts/popup.js';
 
 const pendingControllers = new Map();
@@ -50,6 +59,9 @@ let buttonRefreshLastRun = 0;
 let trackerRefreshQueued = false;
 const trackerRefreshIds = new Set();
 const trackerRefreshTimers = new Map();
+let injectionRefreshTimer = null;
+let lastInjectionKey = null;
+let lastInjectionPrompt = null;
 const uiState = {
     mounted: false,
     currentEditUid: null,
@@ -83,6 +95,10 @@ function syncPendingButtons() {
 }
 
 function scheduleButtonRefresh() {
+    if (!getSettings().enabled) {
+        syncEnabledUi();
+        return;
+    }
     // Streaming and other extensions can generate a lot of DOM mutations.
     // Debounce button scanning to avoid repeatedly walking the whole chat DOM.
     if (buttonRefreshTimer) {
@@ -254,6 +270,12 @@ function scheduleTrackerRefresh() {
     requestAnimationFrame(() => {
         trackerRefreshQueued = false;
 
+        // When disabled, do not render trackers at all (but keep data in chat files).
+        if (!getSettings().enabled) {
+            document.querySelectorAll('#chat .mes').forEach((el) => removeRenderedTracker(el));
+            return;
+        }
+
         const chat = getContext().chat || [];
         if (trackerRefreshIds.size) {
             for (const id of trackerRefreshIds) {
@@ -269,6 +291,11 @@ function scheduleTrackerRefresh() {
 }
 
 function renderVisibleTrackers(chat) {
+    if (!getSettings().enabled) {
+        // Hide trackers from UI without deleting them from chat data.
+        document.querySelectorAll('#chat .mes').forEach((el) => removeRenderedTracker(el));
+        return;
+    }
     // Avoid iterating the whole chat history; render only currently visible message DOM nodes.
     document.querySelectorAll('#chat .mes[mesid]').forEach((element) => {
         const id = Number.parseInt(element.getAttribute('mesid'), 10);
@@ -300,6 +327,154 @@ function showToast(type, message) {
     }
 
     console[type === 'error' ? 'error' : 'log'](`[${EXTENSION_TITLE}] ${message}`);
+}
+
+function syncEnabledUi() {
+    const enabled = !!getSettings().enabled;
+
+    // Hide/show message buttons.
+    document.querySelectorAll('.mes_dynamic_tracker_button').forEach((button) => {
+        // Use inline style so it works regardless of theme CSS.
+        button.style.display = enabled ? '' : 'none';
+    });
+
+    // When disabled, remove rendered trackers from DOM, but keep them in chat metadata.
+    if (!enabled) {
+        document.querySelectorAll('#chat .mes').forEach((el) => removeRenderedTracker(el));
+    }
+}
+
+function resolveExtensionPromptRole(roleString) {
+    const roles = extension_prompt_roles || {};
+    if (roleString === 'system') {
+        return roles.SYSTEM ?? roles.System ?? 0;
+    }
+    if (roleString === 'user') {
+        return roles.USER ?? roles.User ?? 1;
+    }
+    return roles.ASSISTANT ?? roles.Assistant ?? 2;
+}
+
+function resolveExtensionPromptTypeInChat() {
+    const types = extension_prompt_types || {};
+    return types.IN_CHAT ?? 1;
+}
+
+function clearTrackerPromptInjection() {
+    const ctx = getContext();
+    if (typeof ctx.setExtensionPrompt !== 'function') {
+        return;
+    }
+    ctx.setExtensionPrompt(MODULE_NAME, '', extension_prompt_types?.NONE ?? 0, MAX_INJECTION_DEPTH);
+    lastInjectionKey = null;
+    lastInjectionPrompt = null;
+}
+
+function collectTrackersForInjection(messages, limitSetting) {
+    if (!Array.isArray(messages)) {
+        return [];
+    }
+
+    const raw = Number(limitSetting);
+    let remaining = Number.isFinite(raw) ? raw : 0;
+    // Semantics: 0 means "all trackers".
+    if (remaining === 0) {
+        remaining = Number.POSITIVE_INFINITY;
+    }
+
+    if (remaining < 0) {
+        return [];
+    }
+
+    const selected = [];
+    for (let index = messages.length - 2; index >= 0 && remaining > 0; index -= 1) {
+        const store = getTrackerStore(messages[index]);
+        if (store?.data) {
+            selected.push({ messageId: index, store });
+            remaining -= 1;
+        }
+    }
+
+    return selected.reverse();
+}
+
+function buildTrackerPromptText(selectedTrackers, role) {
+    const parts = [];
+    for (const entry of selectedTrackers) {
+        const synthetic = createSyntheticTrackerMessage(entry.store, { format: 'text', role });
+        if (synthetic?.mes) {
+            parts.push(String(synthetic.mes));
+        }
+    }
+    return parts.join('\n\n').trim();
+}
+
+function applyTrackerPromptInjection(force = false) {
+    const ctx = getContext();
+    const settings = getSettings();
+
+    if (typeof ctx.setExtensionPrompt !== 'function') {
+        return;
+    }
+
+    if (!settings.enabled || settings.onlyShow) {
+        clearTrackerPromptInjection();
+        return;
+    }
+
+    const selected = collectTrackersForInjection(ctx.chat || [], settings.includeLastXTrackerMessages);
+    if (!selected.length) {
+        clearTrackerPromptInjection();
+        return;
+    }
+
+    const includeWI = !!settings.includeInWorldInfoScanning;
+    const roleString = settings.trackerMessageRole || 'assistant';
+    const roleNum = resolveExtensionPromptRole(roleString);
+    const typeNum = resolveExtensionPromptTypeInChat();
+    const key = [
+        String(settings.includeLastXTrackerMessages),
+        roleString,
+        includeWI ? 'wi1' : 'wi0',
+        selected.map((e) => `${e.messageId}:${Number(e.store?.createdAt) || 0}`).join(','),
+    ].join('|');
+
+    if (!force && key === lastInjectionKey) {
+        return;
+    }
+
+    const prompt = buildTrackerPromptText(selected, roleString);
+    if (!prompt) {
+        clearTrackerPromptInjection();
+        return;
+    }
+
+    // Avoid redundant writes (some ST builds do extra work on setExtensionPrompt).
+    if (!force && prompt === lastInjectionPrompt && key === lastInjectionKey) {
+        return;
+    }
+
+    ctx.setExtensionPrompt(
+        MODULE_NAME,
+        prompt,
+        typeNum,
+        MAX_INJECTION_DEPTH,
+        includeWI,
+        roleNum,
+    );
+
+    lastInjectionKey = key;
+    lastInjectionPrompt = prompt;
+}
+
+function scheduleInjectionRefresh(force = false) {
+    if (injectionRefreshTimer) {
+        clearTimeout(injectionRefreshTimer);
+    }
+    injectionRefreshTimer = setTimeout(() => {
+        injectionRefreshTimer = null;
+        applyTrackerPromptInjection(force);
+    }, 150);
 }
 
 function escapeHtml(value) {
@@ -541,6 +716,9 @@ function refreshUi() {
     renderPresetSelect();
     renderParentSelect();
 
+    uiState.elements.enabled.checked = !!settings.enabled;
+    uiState.elements.onlyShow.checked = !!settings.onlyShow;
+    uiState.elements.includeWIScan.checked = !!settings.includeInWorldInfoScanning;
     uiState.elements.autoMode.value = settings.autoMode;
     uiState.elements.prompt.value = preset.prompt || '';
     uiState.elements.maxTokens.value = settings.maxResponseTokens;
@@ -548,6 +726,8 @@ function refreshUi() {
     uiState.elements.includeTrackers.value = settings.includeLastXTrackerMessages;
     uiState.elements.trackerRole.value = settings.trackerMessageRole || 'assistant';
     uiState.suppressEvents = false;
+
+    syncEnabledUi();
 
     renderFieldTree();
     if (!uiState.currentEditUid) {
@@ -589,6 +769,10 @@ function findNodeLocationWithParent(nodes, uid, parentUid = ROOT_CONTAINER_ID) {
 
 function upsertFieldFromForm() {
     const settings = getSettings();
+    if (!settings.enabled) {
+        showToast('info', 'Dynamic Tracker is disabled.');
+        return;
+    }
     const preset = getActivePreset(settings);
     const parentUid = uiState.elements.parentSelect.value || ROOT_CONTAINER_ID;
     const isGroup = uiState.elements.entryKind.value === 'group';
@@ -1229,6 +1413,7 @@ async function saveTrackerToMessage(messageId, data, fields) {
     await context.saveChat();
     renderTrackerForMessage(messageId, getTrackerStore(message));
     restoreTrackerDetailsState(messageId, detailsState);
+    scheduleInjectionRefresh(true);
 }
 
 async function clearTrackerFromMessage(messageId) {
@@ -1241,6 +1426,7 @@ async function clearTrackerFromMessage(messageId) {
     clearTrackerStore(message);
     await context.saveChat();
     renderTrackerForMessage(messageId, null);
+    scheduleInjectionRefresh(true);
 }
 
 async function deleteTrackerFromMessage(messageId) {
@@ -1283,7 +1469,14 @@ function applyQuietTrackerGenerationWindow(chatMessages, plan) {
 
     const safeTargetIndex = Math.max(0, Math.min(Number(plan.targetIndex) || 0, sourceMessages.length - 1));
     const includeLastXMessages = Math.max(0, Number(plan.includeLastXMessages) || 0);
-    const includeLastXTrackerMessages = Math.max(0, Number(plan.includeLastXTrackerMessages) || 0);
+    // Semantics:
+    //  - -1 => none
+    //  - 0  => all
+    //  - N  => last N
+    let includeLastXTrackerMessages = Number(plan.includeLastXTrackerMessages);
+    if (!Number.isFinite(includeLastXTrackerMessages)) {
+        includeLastXTrackerMessages = 0;
+    }
 
     // Remove any previously injected synthetic tracker messages.
     // Quiet generation should always inject trackers deterministically.
@@ -1338,7 +1531,8 @@ function applyQuietTrackerGenerationWindow(chatMessages, plan) {
     }
 
     // Inject previous trackers (JSON) between the messages in the final window.
-    if (includeLastXTrackerMessages) {
+    // -1 means none; 0 means all.
+    if (includeLastXTrackerMessages >= 0) {
         buildTrackerInjectionMessages(chatMessages, includeLastXTrackerMessages, {
             format: 'json',
             role: getSettings().trackerMessageRole,
@@ -1390,7 +1584,7 @@ async function generateTracker(messageId) {
         messageId,
         targetIndex: messageId,
         includeLastXMessages: settings.includeLastXMessages,
-        includeLastXTrackerMessages: settings.includeLastXTrackerMessages,
+        includeLastXTrackerMessages: settings.onlyShow ? -1 : settings.includeLastXTrackerMessages,
     };
     setButtonPendingState(messageId, true);
 
@@ -1436,6 +1630,9 @@ async function generateTracker(messageId) {
 }
 
 function shouldAutoGenerate(autoMode, isUserMessage) {
+    if (!getSettings().enabled) {
+        return false;
+    }
     switch (autoMode) {
         case AUTO_MODE.BOTH:
             return true;
@@ -1487,6 +1684,7 @@ function registerChatEvents() {
             const messageId = Number(messageElement?.getAttribute('mesid'));
             if (!Number.isNaN(messageId)) {
                 setTimeout(() => queueTrackerRefresh(messageId), 0);
+                setTimeout(() => scheduleInjectionRefresh(true), 0);
             }
         }
 
@@ -1527,6 +1725,8 @@ function registerChatEvents() {
     const refresh = () => {
         scheduleButtonRefresh();
         renderVisibleTrackers(context.chat || []);
+        syncEnabledUi();
+        scheduleInjectionRefresh();
     };
 
     if (events.CHAT_CHANGED) {
@@ -1536,10 +1736,51 @@ function registerChatEvents() {
     if (events.MORE_MESSAGES_LOADED) {
         context.eventSource.on(events.MORE_MESSAGES_LOADED, refresh);
     }
+
+    // Keep injection fresh right before generation (if supported by current ST build).
+    if (eventSource && event_types && 'GENERATE_AFTER_COMBINE_PROMPTS' in event_types) {
+        eventSource.on(event_types.GENERATE_AFTER_COMBINE_PROMPTS, () => {
+            scheduleInjectionRefresh();
+        });
+    }
 }
 
 function bindSettingsEvents() {
     const settings = getSettings();
+
+    uiState.elements.enabled.addEventListener('input', () => {
+        if (uiState.suppressEvents) {
+            return;
+        }
+        settings.enabled = !!uiState.elements.enabled.checked;
+        saveSettings();
+        syncEnabledUi();
+        // When toggling enabled, also update prompt injection.
+        scheduleInjectionRefresh(true);
+        // Re-render visible trackers when enabled.
+        if (settings.enabled) {
+            renderVisibleTrackers(getContext().chat || []);
+            installMessageButtons();
+        }
+    });
+
+    uiState.elements.onlyShow.addEventListener('input', () => {
+        if (uiState.suppressEvents) {
+            return;
+        }
+        settings.onlyShow = !!uiState.elements.onlyShow.checked;
+        saveSettings();
+        scheduleInjectionRefresh(true);
+    });
+
+    uiState.elements.includeWIScan.addEventListener('input', () => {
+        if (uiState.suppressEvents) {
+            return;
+        }
+        settings.includeInWorldInfoScanning = !!uiState.elements.includeWIScan.checked;
+        saveSettings();
+        scheduleInjectionRefresh(true);
+    });
 
     uiState.elements.autoMode.addEventListener('change', () => {
         if (uiState.suppressEvents) {
@@ -1589,6 +1830,7 @@ function bindSettingsEvents() {
         }
         settings.includeLastXTrackerMessages = Math.max(0, Number(uiState.elements.includeTrackers.value) || 0);
         saveSettings();
+        scheduleInjectionRefresh(true);
     });
 
     uiState.elements.trackerRole.addEventListener('change', () => {
@@ -1597,6 +1839,7 @@ function bindSettingsEvents() {
         }
         settings.trackerMessageRole = uiState.elements.trackerRole.value;
         saveSettings();
+        scheduleInjectionRefresh(true);
     });
 
     uiState.elements.entryKind.addEventListener('change', () => {
@@ -1684,6 +1927,9 @@ async function mountSettings() {
     document.querySelector('#extensions_settings')?.append(uiState.settingsRoot);
 
     uiState.elements = {
+        enabled: uiState.settingsRoot.querySelector('#dt_enabled'),
+        onlyShow: uiState.settingsRoot.querySelector('#dt_only_show'),
+        includeWIScan: uiState.settingsRoot.querySelector('#dt_include_wi_scan'),
         autoMode: uiState.settingsRoot.querySelector('#dt_auto_mode'),
         schemaPreset: uiState.settingsRoot.querySelector('#dt_schema_preset'),
         prompt: uiState.settingsRoot.querySelector('#dt_prompt'),
@@ -1729,6 +1975,8 @@ async function initialize() {
     installMessageButtons();
     ensureMessageButtonObserver();
     renderVisibleTrackers(getContext().chat || []);
+    syncEnabledUi();
+    applyTrackerPromptInjection(true);
     registerChatEvents();
     showToast('success', 'Dynamic Tracker loaded.');
 }
@@ -1746,18 +1994,12 @@ globalThis.dynamicTrackerGenerateInterceptor = async function dynamicTrackerGene
             applyQuietTrackerGenerationWindow(chat, activeQuietGenerationPlan);
             return;
         }
-        // Fallthrough: treat quiet generations like normal ones and inject last trackers.
+        // For other quiet generations, the tracker is injected through `setExtensionPrompt`.
     }
 
-    const settings = getSettings();
-    if (!settings.includeLastXTrackerMessages) {
-        return;
-    }
-
-    buildTrackerInjectionMessages(chat, settings.includeLastXTrackerMessages, {
-        format: 'text',
-        role: settings.trackerMessageRole,
-    });
+    // Best-effort: keep the extension prompt injection up to date for any generation.
+    // (The interceptor itself no longer mutates `chat`, so it won't affect WI scan depth.)
+    scheduleInjectionRefresh();
 };
 
 jQuery(async () => {

@@ -6,6 +6,21 @@
         </div>
         <div class="inline-drawer-content">
             <div class="dynamic-tracker-grid">
+                <label class="dynamic-tracker-checkbox">
+                    <input id="dt_enabled" type="checkbox">
+                    <span>Enabled</span>
+                </label>
+
+                <label class="dynamic-tracker-checkbox">
+                    <input id="dt_only_show" type="checkbox">
+                    <span>Only show</span>
+                </label>
+
+                <label class="dynamic-tracker-checkbox">
+                    <input id="dt_include_wi_scan" type="checkbox">
+                    <span>Include in World Info Scanning</span>
+                </label>
+
                 <label class="dynamic-tracker-field">
                     <span>Auto Mode</span>
                     <select id="dt_auto_mode">
@@ -42,7 +57,7 @@
                 </label>
 
                 <label class="dynamic-tracker-field">
-                    <span>Include Last X Tracker Messages (0 means none)</span>
+                    <span>Include Last X Tracker Messages (0 means all)</span>
                     <input id="dt_include_trackers" class="text_pole settings_input" type="number" min="0" step="1">
                 </label>
 
